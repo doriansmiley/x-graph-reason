@@ -2,6 +2,7 @@ import os
 import openai
 from dotenv import load_dotenv
 from neo4j import GraphDatabase
+import textwrap
 
 # Load environment variables from .env file
 load_dotenv()
@@ -66,20 +67,26 @@ class KnowledgeGraphQueryHandler:
         :param classes: List of top-k class names (from ECL) to query.
         :return: List of query results with class, relationship, target, and resolution.
         """
-        query = """
-        MATCH (c:Entity)-[r]->(t:Entity)
-        OPTIONAL MATCH (r)-[:RESOLVES]->(res:Entity)
-        WHERE c.name IN $classes
-        RETURN c.name AS class, type(r) AS relationship, t.name AS target, res.name AS resolution
-        """
-        with self.driver.session() as session:
-            result = session.run(query, classes=classes)
-            return [
-                {
-                    "class": record["class"],
-                    "relationship": record["relationship"],
-                    "target": record["target"],
-                    "resolution": record["resolution"] or "No resolution available"
-                }
-                for record in result
-            ]
+        query = textwrap.dedent(
+            """
+            MATCH (c:Entity)-[r]->(t:Entity)
+            OPTIONAL MATCH (r)-[:RESOLVES]->(res:Entity)
+            WHERE c.name IN $classes
+            RETURN c.name AS class, type(r) AS relationship, t.name AS target, res.name AS resolution
+            """
+        )
+
+        try:
+            with self.driver.session() as session:
+                result = session.run(query, classes=classes)
+                return [
+                    {
+                        "class": record["class"],
+                        "relationship": record["relationship"],
+                        "target": record["target"],
+                        "resolution": record["resolution"] or "No resolution available"
+                    }
+                    for record in result
+                ]
+        finally:
+            session.close()
