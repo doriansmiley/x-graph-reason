@@ -1,13 +1,21 @@
 import openai
+import os
+import json
+from dotenv import load_dotenv
 import numpy as np
 from rdflib import Graph, Namespace, RDF, RDFS, Literal
 from sklearn.metrics import pairwise_distances
-from sentence_transformers import SentenceTransformer
-from neo4j import GraphDatabase
+import textwrap
 
-# Initialize GPT-4, SentenceTransformer, and Neo4j driver
-embedding_model = SentenceTransformer("paraphrase-MiniLM-L6-v2")
-neo4j_driver = GraphDatabase.driver("neo4j://localhost:7687", auth=("neo4j", "password"))
+# Load environment variables from .env file
+load_dotenv()
+
+# Initialize OpenAI API key and embedding model
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_EMBEDDING_MODEL = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+
+# Set up OpenAI client
+openai.api_key = OPENAI_API_KEY
 
 # Namespace for RDF
 COS = Namespace("http://example.org/insurance/")
@@ -18,6 +26,7 @@ class ExternalContinualLearner:
         self.class_means = {}  # Mean embeddings for each class
         self.shared_covariance = None  # Shared covariance matrix
         self.num_classes = 0
+        self.epsilon = 1e-6  # Small value for regularization
 
     def update_class(self, class_name, tag_embeddings):
         mean_embedding = np.mean(tag_embeddings, axis=0)
@@ -31,7 +40,13 @@ class ExternalContinualLearner:
 
         self.num_classes += 1
 
+        # Regularize the covariance matrix to ensure it's invertible
+        self.shared_covariance += self.epsilon * np.eye(self.shared_covariance.shape[0])
+
     def get_top_k_classes(self, input_embedding, k=3):
+        if not self.class_means:
+            raise ValueError("No classes have been added to the learner.")
+
         distances = {
             class_name: pairwise_distances(
                 input_embedding.reshape(1, -1), mean.reshape(1, -1), metric="mahalanobis", VI=np.linalg.inv(self.shared_covariance)
@@ -93,17 +108,27 @@ class Neo4jKnowledgeGraph:
         self.driver = driver
 
     def add_rdf_to_graph(self, rdf_graph):
-        for subj, pred, obj in rdf_graph:
-            with self.driver.session() as session:
+        """
+        Adds RDF triples to the Neo4j knowledge graph.
+
+        :param rdf_graph: The RDF graph containing triples to add to Neo4j.
+        """
+        session = self.driver.session()  # Open a single session
+        try:
+            for subj, pred, obj in rdf_graph:
                 session.run(
-                    """
-                    MERGE (s:Entity {name: $subj})
-                    MERGE (p:Property {name: $pred})
-                    MERGE (o:Entity {name: $obj})
-                    MERGE (s)-[:RELATION {property: p.name}]->(o)
-                    """,
+                    textwrap.dedent(
+                        """
+                        MERGE (s:Entity {name: $subj})
+                        MERGE (p:Property {name: $pred})
+                        MERGE (o:Entity {name: $obj})
+                        MERGE (s)-[:RELATION {property: p.name}]->(o)
+                        """
+                    ),
                     subj=str(subj), pred=str(pred), obj=str(obj)
                 )
+        finally:
+            session.close()
 
 class KnowledgeGraphUpdater:
     def __init__(self, rdf_file, neo4j_driver):
@@ -136,8 +161,38 @@ class KnowledgeGraphUpdater:
 
         # Initialize ECL from RDF graph
         self.initialize_ecl_from_rdf()
-    
+
+    def initialize_ecl_from_rdf(self):
+        """
+        Initialize the External Continual Learner (ECL) from the RDF graph.
+        """
+        for class_node in self.rdf_processor.graph.subjects(RDF.type, RDFS.Class):
+            # Find all relationships for the class
+            relationships = {
+                str(pred): str(obj)
+                for pred, obj in self.rdf_processor.graph.predicate_objects(subject=class_node)
+                if pred != RDF.type  # Ignore the type predicate
+            }
+
+            # Generate embeddings for relationships
+            relationship_embeddings = [
+                self.generate_embedding(rel) for rel in relationships.keys()
+            ]
+
+            # Skip if no relationships are found
+            if not relationship_embeddings:
+                print(f"Skipping class {class_node} due to no relationships.")
+                continue
+
+            # Update the ECL with the class and its relationship embeddings
+            self.ecl.update_class(str(class_node), np.array(relationship_embeddings))
+
     def process_corpus(self, corpus):
+        """
+        Process a corpus to dynamically update the RDF graph, Neo4j graph, and ECL.
+
+        :param corpus: List of text strings to process.
+        """
         for text in corpus:
             # Extract class name, relationships, and resolutions
             class_name, relationships, resolutions = self.extract_data_from_text_with_resolutions(text)
@@ -147,7 +202,7 @@ class KnowledgeGraphUpdater:
             self.rdf_processor.update_rdf_with_resolutions(relationships, resolutions)
 
             # Update ECL with relationship embeddings
-            relationship_embeddings = [embedding_model.encode(rel) for rel in relationships.keys()]
+            relationship_embeddings = [self.generate_embedding(rel) for rel in relationships.keys()]
             self.ecl.update_class(class_name, np.array(relationship_embeddings))
 
         # Push RDF data to Neo4j
@@ -155,7 +210,10 @@ class KnowledgeGraphUpdater:
 
     def extract_data_from_text_with_resolutions(self, text):
         """
-        Use GPT-4 to extract class, relationships, and resolutions from text.
+        Use OpenAI GPT to extract class, relationships, and resolutions from text.
+
+        :param text: Input text to process.
+        :return: Extracted class name, relationships, and resolutions.
         """
         prompt = f"""
         Extract entities from the following text. Identify:
@@ -178,14 +236,36 @@ class KnowledgeGraphUpdater:
             }}
         }}
         """
-        response = openai.ChatCompletion.create(
-            model="gpt-4",
-            messages=[{"role": "user", "content": prompt}]
-        )
-        extracted_data = json.loads(response['choices'][0]['message']['content'])
+        try:
+            response = openai.ChatCompletion.create(
+                model="gpt-4",
+                messages=[{"role": "user", "content": prompt}]
+            )
+            extracted_data = json.loads(response['choices'][0]['message']['content'])
 
-        class_name = self.rdf_processor.ensure_rdf_class(extracted_data["class"])
-        relationships = self.rdf_processor.ensure_rdf_relationships(extracted_data["relationships"])
-        resolutions = extracted_data["resolutions"]
+            class_name = self.rdf_processor.ensure_rdf_class(extracted_data["class"])
+            relationships = self.rdf_processor.ensure_rdf_relationships(extracted_data["relationships"])
+            resolutions = extracted_data["resolutions"]
 
-        return class_name, relationships, resolutions
+            return class_name, relationships, resolutions
+        except Exception as e:
+            raise RuntimeError(f"Error during OpenAI GPT extraction: {e}")
+
+    @staticmethod
+    def generate_embedding(text):
+        """
+        Generate an embedding for the input text using OpenAI's embeddings API.
+
+        :param text: Input text string.
+        :return: Embedding vector as a list of floats.
+        """
+        try:
+            response = openai.Embedding.create(
+                model=OPENAI_EMBEDDING_MODEL,
+                input=text,
+                encoding_format="float",
+            )
+            embedding = response["data"][0]["embedding"]
+            return embedding
+        except Exception as e:
+            raise RuntimeError(f"Error generating embedding: {e}")

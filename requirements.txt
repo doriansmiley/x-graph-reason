@@ -5,3 +5,6 @@ rdflib
 scikit-learn
 sentence-transformers
 neo4j
+python-dotenv
+pytest
+pytest-mock

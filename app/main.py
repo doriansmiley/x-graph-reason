@@ -1,9 +1,22 @@
+import os
+from flask import Flask, request, jsonify
+from dotenv import load_dotenv
 from KnowledgeGraph import KnowledgeGraphUpdater
+from QueryEngine import KnowledgeGraphQueryHandler
 from neo4j import GraphDatabase
 
-# Neo4j connection details
-# TODO use .env
-neo4j_driver = GraphDatabase.driver("neo4j://localhost:7687", auth=("neo4j", "password"))
+# Load environment variables from .env file
+load_dotenv()
+
+# Neo4j connection details from environment variables
+NEO4J_URI = os.getenv("NEO4J_URI", "neo4j://localhost:7687")
+NEO4J_USERNAME = os.getenv("NEO4J_USERNAME", "neo4j")
+NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "password")
+AURA_INSTANCEID = os.getenv("AURA_INSTANCEID", "default-instance-id")
+AURA_INSTANCENAME = os.getenv("AURA_INSTANCENAME", "default-instance-name")
+
+# Initialize Neo4j driver
+neo4j_driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USERNAME, NEO4J_PASSWORD))
 
 # Path to the RDF base file
 rdf_file = "base_data.ttl"
@@ -11,44 +24,56 @@ rdf_file = "base_data.ttl"
 # Initialize the KnowledgeGraphUpdater
 kg_updater = KnowledgeGraphUpdater(rdf_file, neo4j_driver)
 
-corpus = [
-    "Claim denied due to adjustment required for exceeding allowed amount. Resolution: Verify allowable amounts with the payor.",
-    "Claim denied because preauthorization was not obtained. Resolution: Submit preauthorization forms retroactively.",
-    "Claim denied as medical necessity was not demonstrated. Resolution: Submit medical records demonstrating necessity."
-]
+# Initialize the KnowledgeGraphQueryHandler
+query_handler = KnowledgeGraphQueryHandler(kg_updater.ecl, neo4j_driver)
 
-# Process the corpus to dynamically update the RDF graph, Neo4j graph, and ECL
-kg_updater.process_corpus(corpus)
+# Initialize Flask app
+app = Flask(__name__)
 
-"""
-After processing the corpus, the RDF graph (self.rdf_processor.graph) will include:
+@app.route("/")
+def index():
+    """
+    Default route to check API health.
+    """
+    return jsonify({"message": "Knowledge Graph API is running."})
 
-@prefix ex: <http://example.org/insurance/> .
-@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
-@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@app.route("/update-corpus", methods=["POST"])
+def update_corpus():
+    """
+    API endpoint to update the knowledge graph with a new corpus.
+    Expected input: JSON with a "corpus" key containing a list of text strings.
+    """
+    try:
+        data = request.get_json()
+        corpus = data.get("corpus", [])
+        if not corpus:
+            return jsonify({"error": "No corpus provided"}), 400
 
-# Classes
-ex:Claim rdf:type rdfs:Class .
-ex:Denial rdf:type rdfs:Class .
+        # Process the corpus to update the knowledge graph
+        kg_updater.process_corpus(corpus)
+        return jsonify({"message": "Corpus successfully processed and knowledge graph updated."}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-# Relationships
-ex:adjustment rdf:type rdf:Property .
-ex:preauthorization rdf:type rdf:Property .
-ex:medicalNecessity rdf:type rdf:Property .
-ex:resolves rdf:type rdf:Property .
+@app.route("/query-knowledge-graph", methods=["POST"])
+def query_knowledge_graph():
+    """
+    API endpoint to query the knowledge graph.
+    Expected input: JSON with a "query" key containing the user query.
+    """
+    try:
+        data = request.get_json()
+        query_text = data.get("query", "")
+        if not query_text:
+            return jsonify({"error": "No query provided"}), 400
 
-# Instances
-ex:Claim123 rdf:type ex:Claim ;
-    ex:adjustment "Exceeding allowed amount" ;
-    ex:resolves "Verify allowable amounts with the payor" .
+        # Execute the query on the knowledge graph
+        results = query_handler.query_knowledge_graph(query_text)
+        return jsonify({"results": results}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-ex:Claim456 rdf:type ex:Claim ;
-    ex:preauthorization "Preauthorization not obtained" ;
-    ex:resolves "Submit preauthorization forms retroactively" .
-
-ex:Claim789 rdf:type ex:Claim ;
-    ex:medicalNecessity "Medical necessity not demonstrated" ;
-    ex:resolves "Submit medical records demonstrating necessity" .
-
-"""
-
+# Run the Flask app
+if __name__ == "__main__":
+    print(f"Connecting to Neo4j Aura Instance: {AURA_INSTANCENAME} (ID: {AURA_INSTANCEID})")
+    app.run(debug=True, host="0.0.0.0", port=5000)
