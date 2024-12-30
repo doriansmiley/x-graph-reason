@@ -1,0 +1,7 @@
+flask
+openai
+numpy
+rdflib
+scikit-learn
+sentence-transformers
+neo4j

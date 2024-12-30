@@ -1,0 +1,14 @@
+name: x-graph-reason
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python=3.9  # Specify the Python version
+  - pip  # Include pip for packages not available via Conda
+  - numpy  # For numerical operations
+  - scikit-learn  # For pairwise distances
+  - rdflib  # For RDF graph processing
+  - sentence-transformers  # For embeddings (requires pip)
+  - neo4j  # Neo4j Python driver (requires pip)
+  - pip:
+      - openai  # GPT-4 API for entity extraction

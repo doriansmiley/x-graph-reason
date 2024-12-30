@@ -1,0 +1,124 @@
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex: <http://example.org/insurance/> .
+
+# Classes
+ex:Claim rdf:type rdfs:Class ;
+    rdfs:label "Insurance Claim" .
+
+ex:Denial rdf:type rdfs:Class ;
+    rdfs:label "Denial" .
+
+# Relationships
+ex:denialReason rdf:type rdf:Property ;
+    rdfs:label "Reason for Denial" ;
+    rdfs:domain ex:Denial ;
+    rdfs:range xsd:string .
+
+ex:denialCode rdf:type rdf:Property ;
+    rdfs:label "Denial Code" ;
+    rdfs:domain ex:Denial ;
+    rdfs:range xsd:string .
+
+ex:adjustment rdf:type rdf:Property ;
+    rdfs:label "Adjustment Reason" ;
+    rdfs:domain ex:Claim ;
+    rdfs:range xsd:string .
+
+ex:preauthorization rdf:type rdf:Property ;
+    rdfs:label "Preauthorization Requirement" ;
+    rdfs:domain ex:Claim ;
+    rdfs:range xsd:string .
+
+ex:medicalNecessity rdf:type rdf:Property ;
+    rdfs:label "Medical Necessity" ;
+    rdfs:domain ex:Claim ;
+    rdfs:range xsd:string .
+
+# Attributes for Claim
+ex:claimID rdf:type rdf:Property ;
+    rdfs:label "Claim ID" ;
+    rdfs:domain ex:Claim ;
+    rdfs:range xsd:string .
+
+ex:patientID rdf:type rdf:Property ;
+    rdfs:label "Patient ID" ;
+    rdfs:domain ex:Claim ;
+    rdfs:range xsd:string .
+
+ex:providerID rdf:type rdf:Property ;
+    rdfs:label "Provider ID" ;
+    rdfs:domain ex:Claim ;
+    rdfs:range xsd:string .
+
+ex:claimAmount rdf:type rdf:Property ;
+    rdfs:label "Claim Amount" ;
+    rdfs:domain ex:Claim ;
+    rdfs:range xsd:decimal .
+
+ex:claimStatus rdf:type rdf:Property ;
+    rdfs:label "Claim Status" ;
+    rdfs:domain ex:Claim ;
+    rdfs:range xsd:string .
+
+# Attributes for Denial
+ex:denialDate rdf:type rdf:Property ;
+    rdfs:label "Denial Date" ;
+    rdfs:domain ex:Denial ;
+    rdfs:range xsd:date .
+
+ex:denialType rdf:type rdf:Property ;
+    rdfs:label "Denial Type" ;
+    rdfs:domain ex:Denial ;
+    rdfs:range xsd:string .
+
+ex:denialAmount rdf:type rdf:Property ;
+    rdfs:label "Denied Amount" ;
+    rdfs:domain ex:Denial ;
+    rdfs:range xsd:decimal .
+
+ex:appealStatus rdf:type rdf:Property ;
+    rdfs:label "Appeal Status" ;
+    rdfs:domain ex:Denial ;
+    rdfs:range xsd:string .
+
+ex:resolution rdf:type rdf:Property ;
+    rdfs:label "Resolution Suggestion" ;
+    rdfs:domain ex:Denial ;
+    rdfs:range xsd:string .
+
+# Instances
+ex:Claim123 rdf:type ex:Claim ;
+    ex:claimID "123" ;
+    ex:patientID "P456" ;
+    ex:providerID "PR789" ;
+    ex:claimAmount 1500.00 ;
+    ex:claimStatus "Denied" ;
+    ex:medicalNecessity "Medical necessity not demonstrated" .
+
+ex:Claim456 rdf:type ex:Claim ;
+    ex:claimID "456" ;
+    ex:patientID "P123" ;
+    ex:providerID "PR567" ;
+    ex:claimAmount 1000.00 ;
+    ex:claimStatus "Denied" ;
+    ex:preauthorization "Preauthorization required but not obtained" .
+
+ex:Denial123 rdf:type ex:Denial ;
+    ex:denialCode "45" ;
+    ex:denialReason "Charge exceeds allowable amount" ;
+    ex:denialDate "2023-12-01" ;
+    ex:denialType "Adjustment" ;
+    ex:denialAmount 200.00 ;
+    ex:appealStatus "Pending" ;
+    ex:resolution "Verify allowable amounts with the payor" .
+
+ex:Denial456 rdf:type ex:Denial ;
+    ex:denialCode "100" ;
+    ex:denialReason "Preauthorization required but not obtained" ;
+    ex:denialDate "2023-12-05" ;
+    ex:denialType "Authorization" ;
+    ex:denialAmount 500.00 ;
+    ex:appealStatus "Submitted" ;
+    ex:resolution "Submit preauthorization forms retroactively" .
