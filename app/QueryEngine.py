@@ -54,17 +54,21 @@ class KnowledgeGraphQueryHandler:
         """
         query = textwrap.dedent(
             """
-            MATCH (c:Entity)-[r:`http://example.org/insurance/resolves`]->(res:Entity)
-            MATCH (class)
-            WHERE class.name IN $classes
-            RETURN c.name AS class, 
-                type(r) AS relationship, 
-                res.name AS resolution,
-                res.name AS target
+            MATCH (instance)-[r]->(class)
+            WHERE class.uri IN $classes
+            AND (type(r) = 'type' OR type(r) = 'resolves')
+            AND instance.resolutionDescription IS NOT NULL
+            RETURN
+            class.uri AS class,
+            class.label AS className,
+            instance.appealStatus AS appealStatus,
+            instance.claimStatus AS claimStatus,
+            instance.uri AS target,
+            instance.label AS instanceName,
+            instance.resolutionDescription AS resolution
             """
         )
-
-        print(f"the query is:\n {query}")
+        
         print(f"the classes are:\n {classes}")
 
         try:
@@ -75,9 +79,9 @@ class KnowledgeGraphQueryHandler:
                 for record in result:
                     cleaned_results.append({
                         "class": self._format_uri(record["class"]),
-                        "relationship": record["relationship"],
+                        "className": record["className"],
                         "target": self._format_uri(record["target"]),
-                        "resolution": record["resolution"] or "No resolution available"
+                        "resolution": record["resolution"]
                     })
 
                 return cleaned_results

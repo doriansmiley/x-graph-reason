@@ -90,18 +90,29 @@ class RDFProcessor:
         }
 
         # Define your custom mappings & store config
-        config = Neo4jStoreConfig(auth_data=auth_data,
+        self.config = Neo4jStoreConfig(auth_data=auth_data,
                                 custom_prefixes=prefixes,
                                 handle_vocab_uri_strategy=HANDLE_VOCAB_URI_STRATEGY.IGNORE,
                                 batching=True)
         # Create the RDF Graph, parse & ingest the data to Neo4j, and close the store(If the field batching is set to True in the Neo4jStoreConfig, remember to close the store to prevent the loss of any uncommitted records.)
-        self.graph = Graph(store=Neo4jStore(config=config))
+        self.graph = Graph(store=Neo4jStore(config=self.config))
         self.driver = neo4j_driver
+    
+    def opn_store(self):
+        self.graph.open(self.config)
     
     def load_rdf_data(self, file):
         print("loading rdf data from file")
         # Calling the parse method will implictly open the store
         self.graph.parse(file, format="ttl")
+        self.graph.commit()
+    
+    def query(self, query):
+        with self.driver.session() as session:
+            result = session.run(query)
+            # Fetch all records into a list to ensure the result is consumed
+            records = [record for record in result]
+        return records
 
     def ensure_rdf_class(self, class_name):
         class_node = COS[class_name]
@@ -221,26 +232,32 @@ class KnowledgeGraphUpdater:
         """
         Initialize the External Continual Learner (ECL) from the RDF graph.
         """
-        for class_node in self.rdf_processor.graph.subjects(RDF.type, RDFS.Class):
+        query = """
+        MATCH (subject:Class)
+        RETURN subject
+        """
+        result = self.rdf_processor.query(query)
+        classes = [record["subject"] for record in result]
+        for class_node in classes:
             # Find all relationships for the class
-            relationships = {
-                str(pred): str(obj)
-                for pred, obj in self.rdf_processor.graph.predicate_objects(subject=class_node)
-                if pred != RDF.type  # Ignore the type predicate
-            }
+            query = """
+            MATCH (classNode)-[rel]->(linkedEntity)
+            WHERE NOT linkedEntity:Resource:Class // Exclude attributes or properties
+            AND NOT classNode:Property:Resource
+            RETURN classNode, type(rel) AS relationshipType, linkedEntity
+            """
+            result = self.rdf_processor.query(query)
 
-            # Generate embeddings for relationships
-            relationship_embeddings = [
-                self.generate_embedding(rel) for rel in relationships.keys()
+            # Generate embeddings for the linked entities
+            linked_entity_embeddings = [
+                self.generate_embedding(record["linkedEntity"]["uri"])  # Use the `uri` as the unique identifier
+                for record in result
             ]
 
-            # Skip if no relationships are found
-            if not relationship_embeddings:
-                print(f"Skipping class {class_node} due to no relationships.")
-                continue
-
-            # Update the ECL with the class and its relationship embeddings
-            self.ecl.update_class(str(class_node), np.array(relationship_embeddings))
+            # If no linked entities are found, linked_entity_embeddings will be empty
+            # But still update the ECL with the class and an empty embedding array
+            print(f"linking class node {class_node['uri']} to linked_entity_embeddings")
+            self.ecl.update_class(str(class_node['uri']), np.array(linked_entity_embeddings))
 
     def process_corpus(self, corpus):
         """

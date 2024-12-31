@@ -97,11 +97,13 @@ ex:resolves rdf:type rdf:Property ;
 # Instances
 ex:Resolution1 rdf:type ex:Resolution ;
     rdfs:label "Verify allowable amounts with the payor" ;
-    ex:resolutionDescription "Verify allowable amounts with the payor" .
+    ex:resolutionDescription "Verify allowable amounts with the payor" ;
+    ex:type ex:Resolution .
 
 ex:Resolution2 rdf:type ex:Resolution ;
     rdfs:label "Submit preauthorization forms retroactively" ;
-    ex:resolutionDescription "Submit preauthorization forms retroactively" .
+    ex:resolutionDescription "Submit preauthorization forms retroactively" ;
+    ex:type ex:Resolution .
 
 ex:Claim123 rdf:type ex:Claim ;
     ex:claimID "123" ;
@@ -109,7 +111,8 @@ ex:Claim123 rdf:type ex:Claim ;
     ex:providerID "PR789" ;
     ex:claimAmount 1500.00 ;
     ex:claimStatus "Denied" ;
-    ex:medicalNecessity "Medical necessity not demonstrated" .
+    ex:medicalNecessity "Medical necessity not demonstrated" ;
+    ex:type ex:Claim .
 
 ex:Claim456 rdf:type ex:Claim ;
     ex:claimID "456" ;
@@ -117,7 +120,8 @@ ex:Claim456 rdf:type ex:Claim ;
     ex:providerID "PR567" ;
     ex:claimAmount 1000.00 ;
     ex:claimStatus "Denied" ;
-    ex:preauthorization "Preauthorization required but not obtained" .
+    ex:preauthorization "Preauthorization required but not obtained" ;
+    ex:type ex:Claim .
 
 ex:Denial123 rdf:type ex:Denial ;
     ex:denialCode "45" ;
@@ -126,7 +130,8 @@ ex:Denial123 rdf:type ex:Denial ;
     ex:denialType "Adjustment" ;
     ex:denialAmount 200.00 ;
     ex:appealStatus "Pending" ;
-    ex:resolves ex:Resolution1 .
+    ex:resolves ex:Resolution1 ;
+    ex:type ex:Denial .
 
 ex:Denial456 rdf:type ex:Denial ;
     ex:denialCode "100" ;
@@ -135,4 +140,5 @@ ex:Denial456 rdf:type ex:Denial ;
     ex:denialType "Authorization" ;
     ex:denialAmount 500.00 ;
     ex:appealStatus "Submitted" ;
-    ex:resolves ex:Resolution2 .
+    ex:resolves ex:Resolution2 ;
+    ex:type ex:Denial .
