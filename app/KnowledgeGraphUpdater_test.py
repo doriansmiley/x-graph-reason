@@ -33,47 +33,46 @@ def sample_rdf_file(tmp_path):
     return rdf_file
 
 @pytest.fixture
-def mocked_openai():
+def mocked_openai_client():
     """
-    Fixture to mock OpenAI API calls.
+    Fixture to mock the OpenAI client instance.
     """
-    with patch("openai.ChatCompletion.create") as mocked_chat, patch("openai.Embedding.create") as mocked_embedding:
-        mocked_chat.return_value = {
-            "choices": [
-                {
-                    "message": {
-                        "content": json.dumps({
-                            "class": "Claim",
-                            "relationships": {
-                                "denialReason": "Preauthorization required",
-                                "adjustment": "Charge exceeds allowed amount"
-                            },
-                            "resolutions": {
-                                "denialReason": "Submit preauthorization forms",
-                                "adjustment": "Verify charge limits"
-                            }
-                        })
-                    }
-                }
-            ]
-        }
+    client = MagicMock()
+    # Mock the embeddings.create method's response
+    client.embeddings.create.return_value = MagicMock(
+        data=[
+            MagicMock(embedding=[0.1, 0.2, 0.3])
+        ]
+    )
+    # mock completions
+    client.chat.completions.create.return_value = MagicMock(
+        choices=[
+            MagicMock(
+                message=MagicMock(
+                    content=json.dumps({
+                        "class": "Claim",
+                        "relationships": {
+                            "denialReason": "Preauthorization required",
+                            "adjustment": "Charge exceeds allowed amount"
+                        },
+                        "resolutions": {
+                            "denialReason": "Submit preauthorization forms",
+                            "adjustment": "Verify charge limits"
+                        }
+                    })
+                )
+            )
+        ]
+    )
+    
+    return client
 
-        mocked_embedding.return_value = {
-            "data": [
-                {
-                    "embedding": [0.1, 0.2, 0.3]
-                }
-            ]
-        }
-
-        yield mocked_chat, mocked_embedding
-
-def test_process_corpus(mocked_neo4j_driver, sample_rdf_file, mocked_openai):
+def test_process_corpus(mocked_neo4j_driver, sample_rdf_file, mocked_openai_client):
     """
     Test the `process_corpus` method of `KnowledgeGraphUpdater`.
     """
     # Initialize KnowledgeGraphUpdater
-    updater = KnowledgeGraphUpdater(sample_rdf_file, mocked_neo4j_driver)
+    updater = KnowledgeGraphUpdater(sample_rdf_file, mocked_neo4j_driver, mocked_openai_client)
 
     # Sample corpus
     corpus = [
@@ -86,11 +85,11 @@ def test_process_corpus(mocked_neo4j_driver, sample_rdf_file, mocked_openai):
 
     # Assertions
     # Ensure OpenAI GPT was called with the correct prompt
-    mocked_openai[0].assert_called()
-    assert mocked_openai[0].call_count == len(corpus)
+    mocked_openai_client.chat.completions.create.assert_called()
+    assert mocked_openai_client.chat.completions.create.call_count == len(corpus)
 
     # Ensure OpenAI embedding was called for each relationship
-    mocked_openai[1].assert_has_calls([
+    mocked_openai_client.embeddings.create.assert_has_calls([
         call(model="text-embedding-3-small", input="denialReason", encoding_format="float"),
         call(model="text-embedding-3-small", input="adjustment", encoding_format="float"),
     ], any_order=True)

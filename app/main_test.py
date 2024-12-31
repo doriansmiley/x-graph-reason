@@ -1,60 +1,78 @@
+import requests
+import subprocess
+import time
+import os
+import signal
 import pytest
-import json
-from flask import Flask
-from main import app
-from unittest.mock import patch
 
-@pytest.fixture
-def client():
+# Constants
+BASE_URL = "http://localhost:5000"
+API_PORT = 5000
+
+# Sample data for testing
+CORPUS_PAYLOAD = {
+    "corpus": [
+        "Claim denied due to adjustment required for exceeding allowed amount. Resolution: Verify allowable amounts with the payor.",
+        "Claim denied because preauthorization was not obtained. Resolution: Submit preauthorization forms retroactively."
+    ]
+}
+
+QUERY_PAYLOAD = {
+    "query": "Why was my claim denied?"
+}
+
+
+@pytest.fixture(scope="module")
+def launch_api():
     """
-    Fixture to set up the Flask test client.
+    Fixture to launch the API if it is not already running.
+    Ensures the Flask application is started and cleaned up after tests.
     """
-    app.config["TESTING"] = True
-    with app.test_client() as client:
-        yield client
+    # Check if the API is running
+    try:
+        response = requests.get(f"{BASE_URL}/")
+        if response.status_code == 200:
+            # API is already running
+            yield
+            return
+    except requests.ConnectionError:
+        pass
+
+    # API is not running, launch it
+    process = subprocess.Popen(["python", "app/main.py"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    time.sleep(5)  # Wait for the API to start
+
+    yield  # Provide the fixture
+
+    # Terminate the process after the tests
+    os.kill(process.pid, signal.SIGTERM)
+    process.wait()
 
 
-@patch("openai.ChatCompletion.create")  # Mock the OpenAI API call
-def test_query_knowledge_graph(mock_openai, client):
+def test_index_endpoint(launch_api):
     """
-    Test the /query-knowledge-graph endpoint, mocking external API calls.
+    Test the index endpoint to ensure API health.
     """
-    # Mock response from OpenAI API
-    mock_openai.return_value = {
-        "choices": [
-            {
-                "message": {
-                    "content": json.dumps({
-                        "class": "Claim_789",
-                        "relationships": {
-                            "medicalNecessity": "Medical necessity not demonstrated"
-                        },
-                        "resolutions": {
-                            "medicalNecessity": "Submit medical records demonstrating necessity"
-                        },
-                    })
-                }
-            }
-        ]
-    }
-
-    # Send a POST request to the /query-knowledge-graph endpoint
-    response = client.post(
-        "/query-knowledge-graph",
-        json={"query": "Why was the claim denied for medical necessity?"},
-    )
-
-    # Check the response status code
+    response = requests.get(f"{BASE_URL}/")
     assert response.status_code == 200
+    assert response.json() == {"message": "Knowledge Graph API is running."}
 
-    # Check the response JSON
-    assert response.json == {
-        "results": [
-            {
-                "class": "Claim_789",
-                "relationship": "medicalNecessity",
-                "target": "Medical necessity not demonstrated",
-                "resolution": "Submit medical records demonstrating necessity",
-            }
-        ]
-    }
+
+def test_update_corpus_endpoint(launch_api):
+    """
+    Test the `/update-corpus` endpoint with a valid payload.
+    """
+    response = requests.post(f"{BASE_URL}/update-corpus", json=CORPUS_PAYLOAD)
+    assert response.status_code == 200
+    assert response.json() == {"message": "Corpus successfully processed and knowledge graph updated."}
+
+
+def test_query_knowledge_graph_endpoint(launch_api):
+    """
+    Test the `/query-knowledge-graph` endpoint with a valid query.
+    """
+    response = requests.post(f"{BASE_URL}/query-knowledge-graph", json=QUERY_PAYLOAD)
+    assert response.status_code == 200
+    # Validate the structure of the response (the actual content may vary based on your implementation)
+    assert "results" in response.json()
+    assert isinstance(response.json()["results"], list)

@@ -1,14 +1,77 @@
 import pytest
 import numpy as np
+import json
+from unittest.mock import MagicMock, patch, call
 from KnowledgeGraph import ExternalContinualLearner  # Assuming the class is in a file named ExternalContinualLearner.py
 
+@pytest.fixture
+def mocked_openai_client():
+    """
+    Fixture to mock the OpenAI client instance.
+    """
+    client = MagicMock()
+    # Mock the embeddings.create method's response
+    client.embeddings.create.return_value = MagicMock(
+        data=[
+            MagicMock(embedding=[0.1, 0.2, 0.3])
+        ]
+    )
+    # mock completions
+    client.chat.completions.create.return_value = MagicMock(
+        choices=[
+            MagicMock(
+                message=MagicMock(
+                    content=json.dumps({
+                        "class": "Claim",
+                        "relationships": {
+                            "denialReason": "Preauthorization required",
+                            "adjustment": "Charge exceeds allowed amount"
+                        },
+                        "resolutions": {
+                            "denialReason": "Submit preauthorization forms",
+                            "adjustment": "Verify charge limits"
+                        }
+                    })
+                )
+            )
+        ]
+    )
+    
+    return client
 
 @pytest.fixture
 def ecl():
+    client = MagicMock()
+    # Mock the embeddings.create method's response
+    client.embeddings.create.return_value = MagicMock(
+        data=[
+            MagicMock(embedding=[0.1, 0.2, 0.3])
+        ]
+    )
+    # mock completions
+    client.chat.completions.create.return_value = MagicMock(
+        choices=[
+            MagicMock(
+                message=MagicMock(
+                    content=json.dumps({
+                        "class": "Claim",
+                        "relationships": {
+                            "denialReason": "Preauthorization required",
+                            "adjustment": "Charge exceeds allowed amount"
+                        },
+                        "resolutions": {
+                            "denialReason": "Submit preauthorization forms",
+                            "adjustment": "Verify charge limits"
+                        }
+                    })
+                )
+            )
+        ]
+    )
     """
     Fixture to initialize the ExternalContinualLearner instance.
     """
-    return ExternalContinualLearner()
+    return ExternalContinualLearner(client)
 
 
 def test_update_class(ecl):

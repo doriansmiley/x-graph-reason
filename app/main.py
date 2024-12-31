@@ -1,9 +1,13 @@
 import os
+from openai import OpenAI
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 from KnowledgeGraph import KnowledgeGraphUpdater
 from QueryEngine import KnowledgeGraphQueryHandler
 from neo4j import GraphDatabase
+import faulthandler
+
+faulthandler.enable()
 
 # Load environment variables from .env file
 load_dotenv()
@@ -15,17 +19,22 @@ NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "password")
 AURA_INSTANCEID = os.getenv("AURA_INSTANCEID", "default-instance-id")
 AURA_INSTANCENAME = os.getenv("AURA_INSTANCENAME", "default-instance-name")
 
+# Initialize OpenAI API key from environment variables
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+client = OpenAI(api_key=OPENAI_API_KEY)
+
 # Initialize Neo4j driver
 neo4j_driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USERNAME, NEO4J_PASSWORD))
 
-# Path to the RDF base file
-rdf_file = "base_data.ttl"
+# Load the RDF file content into memory
+with open("app/base_data.ttl", "rb") as file:
+    rdf_file_bytes = file.read()
 
 # Initialize the KnowledgeGraphUpdater
-kg_updater = KnowledgeGraphUpdater(rdf_file, neo4j_driver)
+kg_updater = KnowledgeGraphUpdater(rdf_file_bytes, neo4j_driver, client)
 
 # Initialize the KnowledgeGraphQueryHandler
-query_handler = KnowledgeGraphQueryHandler(kg_updater.ecl, neo4j_driver)
+query_handler = KnowledgeGraphQueryHandler(kg_updater.ecl, neo4j_driver, client)
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -71,6 +80,7 @@ def query_knowledge_graph():
         results = query_handler.query_knowledge_graph(query_text)
         return jsonify({"results": results}), 200
     except Exception as e:
+        print(f"{e}")
         return jsonify({"error": str(e)}), 500
 
 # Run the Flask app

@@ -10,33 +10,10 @@ ex:Claim rdf:type rdfs:Class ;
 ex:Denial rdf:type rdfs:Class ;
     rdfs:label "Denial" .
 
-# Relationships
-ex:denialReason rdf:type rdf:Property ;
-    rdfs:label "Reason for Denial" ;
-    rdfs:domain ex:Denial ;
-    rdfs:range xsd:string .
+ex:Resolution rdf:type rdfs:Class ;
+    rdfs:label "Resolution" .
 
-ex:denialCode rdf:type rdf:Property ;
-    rdfs:label "Denial Code" ;
-    rdfs:domain ex:Denial ;
-    rdfs:range xsd:string .
-
-ex:adjustment rdf:type rdf:Property ;
-    rdfs:label "Adjustment Reason" ;
-    rdfs:domain ex:Claim ;
-    rdfs:range xsd:string .
-
-ex:preauthorization rdf:type rdf:Property ;
-    rdfs:label "Preauthorization Requirement" ;
-    rdfs:domain ex:Claim ;
-    rdfs:range xsd:string .
-
-ex:medicalNecessity rdf:type rdf:Property ;
-    rdfs:label "Medical Necessity" ;
-    rdfs:domain ex:Claim ;
-    rdfs:range xsd:string .
-
-# Attributes for Claim
+# Properties
 ex:claimID rdf:type rdf:Property ;
     rdfs:label "Claim ID" ;
     rdfs:domain ex:Claim ;
@@ -62,7 +39,16 @@ ex:claimStatus rdf:type rdf:Property ;
     rdfs:domain ex:Claim ;
     rdfs:range xsd:string .
 
-# Attributes for Denial
+ex:denialReason rdf:type rdf:Property ;
+    rdfs:label "Reason for Denial" ;
+    rdfs:domain ex:Denial ;
+    rdfs:range xsd:string .
+
+ex:denialCode rdf:type rdf:Property ;
+    rdfs:label "Denial Code" ;
+    rdfs:domain ex:Denial ;
+    rdfs:range xsd:string .
+
 ex:denialDate rdf:type rdf:Property ;
     rdfs:label "Denial Date" ;
     rdfs:domain ex:Denial ;
@@ -74,7 +60,7 @@ ex:denialType rdf:type rdf:Property ;
     rdfs:range xsd:string .
 
 ex:denialAmount rdf:type rdf:Property ;
-    rdfs:label "Denied Amount" ;
+    rdfs:label "Denial Amount" ;
     rdfs:domain ex:Denial ;
     rdfs:range xsd:decimal .
 
@@ -83,12 +69,40 @@ ex:appealStatus rdf:type rdf:Property ;
     rdfs:domain ex:Denial ;
     rdfs:range xsd:string .
 
-ex:resolution rdf:type rdf:Property ;
-    rdfs:label "Resolution Suggestion" ;
-    rdfs:domain ex:Denial ;
+ex:adjustment rdf:type rdf:Property ;
+    rdfs:label "Adjustment Reason" ;
+    rdfs:domain ex:Claim ;
     rdfs:range xsd:string .
 
+ex:preauthorization rdf:type rdf:Property ;
+    rdfs:label "Preauthorization Requirement" ;
+    rdfs:domain ex:Claim ;
+    rdfs:range xsd:string .
+
+ex:medicalNecessity rdf:type rdf:Property ;
+    rdfs:label "Medical Necessity" ;
+    rdfs:domain ex:Claim ;
+    rdfs:range xsd:string .
+
+ex:resolutionDescription rdf:type rdf:Property ;
+    rdfs:label "Resolution Description" ;
+    rdfs:domain ex:Resolution ;
+    rdfs:range xsd:string .
+
+ex:resolves rdf:type rdf:Property ;
+    rdfs:label "Resolves" ;
+    rdfs:domain ex:Denial ;
+    rdfs:range ex:Resolution .
+
 # Instances
+ex:Resolution1 rdf:type ex:Resolution ;
+    rdfs:label "Verify allowable amounts with the payor" ;
+    ex:resolutionDescription "Verify allowable amounts with the payor" .
+
+ex:Resolution2 rdf:type ex:Resolution ;
+    rdfs:label "Submit preauthorization forms retroactively" ;
+    ex:resolutionDescription "Submit preauthorization forms retroactively" .
+
 ex:Claim123 rdf:type ex:Claim ;
     ex:claimID "123" ;
     ex:patientID "P456" ;
@@ -112,7 +126,7 @@ ex:Denial123 rdf:type ex:Denial ;
     ex:denialType "Adjustment" ;
     ex:denialAmount 200.00 ;
     ex:appealStatus "Pending" ;
-    ex:resolution "Verify allowable amounts with the payor" .
+    ex:resolves ex:Resolution1 .
 
 ex:Denial456 rdf:type ex:Denial ;
     ex:denialCode "100" ;
@@ -121,4 +135,4 @@ ex:Denial456 rdf:type ex:Denial ;
     ex:denialType "Authorization" ;
     ex:denialAmount 500.00 ;
     ex:appealStatus "Submitted" ;
-    ex:resolution "Submit preauthorization forms retroactively" .
+    ex:resolves ex:Resolution2 .

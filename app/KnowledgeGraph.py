@@ -1,59 +1,67 @@
-import openai
-import os
 import json
-from dotenv import load_dotenv
 import numpy as np
 from rdflib import Graph, Namespace, RDF, RDFS, Literal
 from sklearn.metrics import pairwise_distances
 import textwrap
-
-# Load environment variables from .env file
-load_dotenv()
-
-# Initialize OpenAI API key and embedding model
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OPENAI_EMBEDDING_MODEL = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+from scipy.spatial.distance import mahalanobis
 
 # Set up OpenAI client
-openai.api_key = OPENAI_API_KEY
 
 # Namespace for RDF
 COS = Namespace("http://example.org/insurance/")
 
 # External Continual Learner (ECL)
 class ExternalContinualLearner:
-    def __init__(self):
+    def __init__(self, client):
         self.class_means = {}  # Mean embeddings for each class
         self.shared_covariance = None  # Shared covariance matrix
         self.num_classes = 0
         self.epsilon = 1e-6  # Small value for regularization
+        self.client = client
 
     def update_class(self, class_name, tag_embeddings):
         mean_embedding = np.mean(tag_embeddings, axis=0)
         self.class_means[class_name] = mean_embedding
 
-        deviations = tag_embeddings - mean_embedding
-        class_covariance = np.cov(deviations, rowvar=False)
-        self.shared_covariance = (
-            self.num_classes * self.shared_covariance + class_covariance
-        ) / (self.num_classes + 1) if self.shared_covariance is not None else class_covariance
+        # Handle cases where tag_embeddings has less than 2 rows
+        if tag_embeddings.shape[0] < 2:
+            class_covariance = np.eye(tag_embeddings.shape[1]) * self.epsilon
+        else:
+            deviations = tag_embeddings - mean_embedding
+            class_covariance = np.atleast_2d(np.cov(deviations, rowvar=False))
+
+        if self.shared_covariance is None:
+            self.shared_covariance = np.eye(tag_embeddings.shape[1]) * self.epsilon
+        else:
+            self.shared_covariance = (
+                self.num_classes * self.shared_covariance + class_covariance
+            ) / (self.num_classes + 1)
 
         self.num_classes += 1
 
-        # Regularize the covariance matrix to ensure it's invertible
+        # Regularize the covariance matrix
         self.shared_covariance += self.epsilon * np.eye(self.shared_covariance.shape[0])
 
     def get_top_k_classes(self, input_embedding, k=3):
         if not self.class_means:
             raise ValueError("No classes have been added to the learner.")
+        
+        # Ensure input_embedding is a NumPy array
+        input_embedding = np.array(input_embedding)
 
+
+        embedding_size = input_embedding.shape[0]
+        if self.shared_covariance.shape != (embedding_size, embedding_size):
+            raise ValueError(f"Shared covariance matrix shape mismatch: expected ({embedding_size}, {embedding_size}), got {self.shared_covariance.shape}")
+
+        VI = np.linalg.inv(self.shared_covariance)
         distances = {
-            class_name: pairwise_distances(
-                input_embedding.reshape(1, -1), mean.reshape(1, -1), metric="mahalanobis", VI=np.linalg.inv(self.shared_covariance)
-            )[0][0]
+            class_name: mahalanobis(input_embedding, mean, VI)
             for class_name, mean in self.class_means.items()
         }
+
         return sorted(distances, key=distances.get)[:k]
+
 
 # RDF Processor
 class RDFProcessor:
@@ -89,7 +97,7 @@ class RDFProcessor:
             rel_node = COS[rel]
             target_node = COS[target.replace(" ", "_")]
             self.graph.add((class_node, rel_node, target_node))
-    
+
     def update_rdf_with_resolutions(self, relationships, resolutions):
         """
         Update RDF graph with resolutions for relationships (denial reasons).
@@ -113,25 +121,47 @@ class Neo4jKnowledgeGraph:
 
         :param rdf_graph: The RDF graph containing triples to add to Neo4j.
         """
+        # Define a set of valid relationship types based on the TTL file
+        valid_relationships = {
+            "http://example.org/insurance/denialReason",
+            "http://example.org/insurance/denialCode",
+            "http://example.org/insurance/adjustment",
+            "http://example.org/insurance/preauthorization",
+            "http://example.org/insurance/medicalNecessity",
+            "http://example.org/insurance/resolves"
+        }
+
         session = self.driver.session()  # Open a single session
         try:
             for subj, pred, obj in rdf_graph:
+                # Filter out invalid predicates
+                if str(pred) not in valid_relationships:
+                    print(f"Skipping invalid relationship: {subj} -[{pred}]-> {obj}")
+                    query = textwrap.dedent("""
+                            MERGE (s:Entity {name: $subj})
+                            MERGE (o:Entity {name: $obj})
+                        """)
+                else:
+                     print(f"Adding relationship: {subj} -[{pred}]-> {obj}")
+                     query = textwrap.dedent(f"""
+                            MERGE (s:Entity {{name: $subj}})
+                            MERGE (o:Entity {{name: $obj}})
+                            MERGE (s)-[:`{pred}`]->(o)
+                        """)
+
+                # Run the query with parameters for `subj` and `obj`
                 session.run(
-                    textwrap.dedent(
-                        """
-                        MERGE (s:Entity {name: $subj})
-                        MERGE (p:Property {name: $pred})
-                        MERGE (o:Entity {name: $obj})
-                        MERGE (s)-[:RELATION {property: p.name}]->(o)
-                        """
-                    ),
-                    subj=str(subj), pred=str(pred), obj=str(obj)
+                    query,
+                    subj=str(subj),
+                    obj=str(obj)
                 )
         finally:
             session.close()
 
+
+
 class KnowledgeGraphUpdater:
-    def __init__(self, rdf_file, neo4j_driver):
+    def __init__(self, rdf_file, neo4j_driver, client):
         """
         Initialize KnowledgeGraphUpdater with RDFProcessor, ECL, and Neo4jKnowledgeGraph.
         Load the supplied RDF file to populate the RDF graph, Neo4j graph, and ECL.
@@ -140,8 +170,9 @@ class KnowledgeGraphUpdater:
         :param neo4j_driver: Neo4j driver for connecting to the database.
         """
         # Initialize dependencies
+        self.client = client
         self.rdf_processor = RDFProcessor()
-        self.ecl = ExternalContinualLearner()
+        self.ecl = ExternalContinualLearner(client)
         self.kg = Neo4jKnowledgeGraph(neo4j_driver)
 
         # Load RDF data
@@ -237,11 +268,9 @@ class KnowledgeGraphUpdater:
         }}
         """
         try:
-            response = openai.ChatCompletion.create(
-                model="gpt-4",
-                messages=[{"role": "user", "content": prompt}]
-            )
-            extracted_data = json.loads(response['choices'][0]['message']['content'])
+            response = self.client.chat.completions.create(model="gpt-4",
+            messages=[{"role": "user", "content": prompt}])
+            extracted_data = json.loads(response.choices[0].message.content)
 
             class_name = self.rdf_processor.ensure_rdf_class(extracted_data["class"])
             relationships = self.rdf_processor.ensure_rdf_relationships(extracted_data["relationships"])
@@ -251,8 +280,7 @@ class KnowledgeGraphUpdater:
         except Exception as e:
             raise RuntimeError(f"Error during OpenAI GPT extraction: {e}")
 
-    @staticmethod
-    def generate_embedding(text):
+    def generate_embedding(self, text):
         """
         Generate an embedding for the input text using OpenAI's embeddings API.
 
@@ -260,12 +288,10 @@ class KnowledgeGraphUpdater:
         :return: Embedding vector as a list of floats.
         """
         try:
-            response = openai.Embedding.create(
-                model=OPENAI_EMBEDDING_MODEL,
-                input=text,
-                encoding_format="float",
-            )
-            embedding = response["data"][0]["embedding"]
+            response = self.client.embeddings.create(model="text-embedding-3-small",
+            input=text,
+            encoding_format="float")
+            embedding = response.data[0].embedding
             return embedding
         except Exception as e:
             raise RuntimeError(f"Error generating embedding: {e}")

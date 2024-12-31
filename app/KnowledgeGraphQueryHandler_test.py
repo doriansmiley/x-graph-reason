@@ -45,27 +45,26 @@ def mocked_neo4j_driver():
     return driver
 
 @pytest.fixture
-def mocked_openai():
+def mocked_openai_client():
     """
-    Fixture to mock OpenAI API calls.
+    Fixture to mock the OpenAI client instance.
     """
-    with patch("openai.Embedding.create") as mocked_embedding:
-        mocked_embedding.return_value = {
-            "data": [
-                {
-                    "embedding": [0.1, 0.2, 0.3]
-                }
-            ]
-        }
-        yield mocked_embedding
+    client = MagicMock()
+    # Mock the embeddings.create method's response
+    client.embeddings.create.return_value = MagicMock(
+        data=[
+            MagicMock(embedding=[0.1, 0.2, 0.3])
+        ]
+    )
+    return client
 
 
-def test_query_knowledge_graph(mocked_ecl, mocked_neo4j_driver, mocked_openai):
+def test_query_knowledge_graph(mocked_ecl, mocked_neo4j_driver, mocked_openai_client):
     """
     Test the `query_knowledge_graph` method of `KnowledgeGraphQueryHandler`.
     """
     # Initialize the query handler with mocked dependencies
-    query_handler = KnowledgeGraphQueryHandler(mocked_ecl, mocked_neo4j_driver)
+    query_handler = KnowledgeGraphQueryHandler(mocked_ecl, mocked_neo4j_driver, mocked_openai_client)
 
     # Test input
     query_text = "Why was my claim denied?"
@@ -75,7 +74,7 @@ def test_query_knowledge_graph(mocked_ecl, mocked_neo4j_driver, mocked_openai):
 
     # Assertions
     # Verify OpenAI embedding API was called
-    mocked_openai.assert_called_once_with(
+    mocked_openai_client.embeddings.create.assert_called_once_with(
         model="text-embedding-3-small",
         input=query_text,
         encoding_format="float"
@@ -90,7 +89,7 @@ def test_query_knowledge_graph(mocked_ecl, mocked_neo4j_driver, mocked_openai):
         textwrap.dedent(
             """
             MATCH (c:Entity)-[r]->(t:Entity)
-            OPTIONAL MATCH (r)-[:RESOLVES]->(res:Entity)
+            OPTIONAL MATCH (t)-[:RESOLVES]->(res:Entity)
             WHERE c.name IN $classes
             RETURN c.name AS class, type(r) AS relationship, t.name AS target, res.name AS resolution
             """
