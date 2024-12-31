@@ -1,14 +1,25 @@
 import json
 import numpy as np
 from rdflib import Graph, Namespace, RDF, RDFS, Literal
-from sklearn.metrics import pairwise_distances
+from rdflib import Namespace
+from rdflib_neo4j import Neo4jStoreConfig, Neo4jStore, HANDLE_VOCAB_URI_STRATEGY
 import textwrap
 from scipy.spatial.distance import mahalanobis
+from dotenv import load_dotenv
+import os
 
 # Set up OpenAI client
 
 # Namespace for RDF
-COS = Namespace("http://example.org/insurance/")
+COS = Namespace("http://example.org/insurance#")
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Neo4j connection details from environment variables
+NEO4J_URI = os.getenv("NEO4J_URI", "neo4j://localhost:7687")
+NEO4J_USERNAME = os.getenv("NEO4J_USERNAME", "neo4j")
+NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "password")
 
 # External Continual Learner (ECL)
 class ExternalContinualLearner:
@@ -65,14 +76,83 @@ class ExternalContinualLearner:
 
 # RDF Processor
 class RDFProcessor:
-    def __init__(self):
-        self.graph = Graph()
+    def __init__(self, neo4j_driver):
+        auth_data = {'uri': NEO4J_URI,
+             'database': "neo4j",
+             'user': NEO4J_USERNAME,
+             'pwd': NEO4J_PASSWORD}
+
+        prefixes = {
+            'rdf': Namespace('http://www.w3.org/1999/02/22-rdf-syntax-ns#'),
+            'rdfs': Namespace('http://www.w3.org/2000/01/rdf-schema#'),
+            'xsd': Namespace('http://www.w3.org/2001/XMLSchema#'),
+            'ex': Namespace('http://example.org/insurance#'),
+        }
+
+        # Define your custom mappings & store config
+        config = Neo4jStoreConfig(auth_data=auth_data,
+                                custom_prefixes=prefixes,
+                                handle_vocab_uri_strategy=HANDLE_VOCAB_URI_STRATEGY.IGNORE,
+                                batching=True)
+        # Create the RDF Graph, parse & ingest the data to Neo4j, and close the store(If the field batching is set to True in the Neo4jStoreConfig, remember to close the store to prevent the loss of any uncommitted records.)
+        self.graph = Graph(store=Neo4jStore(config=config))
+        self.driver = neo4j_driver
+    
+    def load_rdf_data(self, file):
+        print("loading rdf data from file")
+        # Calling the parse method will implictly open the store
+        self.graph.parse(file, format="ttl")
 
     def ensure_rdf_class(self, class_name):
         class_node = COS[class_name]
         if (class_node, RDF.type, RDFS.Class) not in self.graph:
             self.graph.add((class_node, RDF.type, RDFS.Class))
         return class_name
+
+    def add_rdf_to_graph(self, rdf_graph):
+        """
+        Adds RDF triples to the Neo4j knowledge graph.
+
+        :param rdf_graph: The RDF graph containing triples to add to Neo4j.
+        """
+        # TODO fix me, this method does not work. Rewrite with self.graph
+
+        # Define a set of valid relationship types based on the TTL file
+        valid_relationships = {
+            "http://example.org/insurance/denialReason",
+            "http://example.org/insurance/denialCode",
+            "http://example.org/insurance/adjustment",
+            "http://example.org/insurance/preauthorization",
+            "http://example.org/insurance/medicalNecessity",
+            "http://example.org/insurance/resolves"
+        }
+
+        session = self.driver.session()  # Open a single session
+        try:
+            for subj, pred, obj in rdf_graph:
+                # Filter out invalid predicates
+                if str(pred) not in valid_relationships:
+                    print(f"Skipping invalid relationship: {subj} -[{pred}]-> {obj}")
+                    query = textwrap.dedent("""
+                            MERGE (s:Entity {name: $subj})
+                            MERGE (o:Entity {name: $obj})
+                        """)
+                else:
+                        print(f"Adding relationship: {subj} -[{pred}]-> {obj}")
+                        query = textwrap.dedent(f"""
+                            MERGE (s:Entity {{name: $subj}})
+                            MERGE (o:Entity {{name: $obj}})
+                            MERGE (s)-[:`{pred}`]->(o)
+                        """)
+
+                # Run the query with parameters for `subj` and `obj`
+                session.run(
+                    query,
+                    subj=str(subj),
+                    obj=str(obj)
+                )
+        finally:
+            session.close()
 
     def ensure_rdf_relationships(self, relationships):
         updated_relationships = {}
@@ -110,56 +190,6 @@ class RDFProcessor:
             self.graph.add((resolution_node, RDF.type, RDFS.Class))
             self.graph.add((rel_node, COS["resolves"], resolution_node))
 
-# Neo4j Knowledge Graph Integration
-class Neo4jKnowledgeGraph:
-    def __init__(self, driver):
-        self.driver = driver
-
-    def add_rdf_to_graph(self, rdf_graph):
-        """
-        Adds RDF triples to the Neo4j knowledge graph.
-
-        :param rdf_graph: The RDF graph containing triples to add to Neo4j.
-        """
-        # Define a set of valid relationship types based on the TTL file
-        valid_relationships = {
-            "http://example.org/insurance/denialReason",
-            "http://example.org/insurance/denialCode",
-            "http://example.org/insurance/adjustment",
-            "http://example.org/insurance/preauthorization",
-            "http://example.org/insurance/medicalNecessity",
-            "http://example.org/insurance/resolves"
-        }
-
-        session = self.driver.session()  # Open a single session
-        try:
-            for subj, pred, obj in rdf_graph:
-                # Filter out invalid predicates
-                if str(pred) not in valid_relationships:
-                    print(f"Skipping invalid relationship: {subj} -[{pred}]-> {obj}")
-                    query = textwrap.dedent("""
-                            MERGE (s:Entity {name: $subj})
-                            MERGE (o:Entity {name: $obj})
-                        """)
-                else:
-                     print(f"Adding relationship: {subj} -[{pred}]-> {obj}")
-                     query = textwrap.dedent(f"""
-                            MERGE (s:Entity {{name: $subj}})
-                            MERGE (o:Entity {{name: $obj}})
-                            MERGE (s)-[:`{pred}`]->(o)
-                        """)
-
-                # Run the query with parameters for `subj` and `obj`
-                session.run(
-                    query,
-                    subj=str(subj),
-                    obj=str(obj)
-                )
-        finally:
-            session.close()
-
-
-
 class KnowledgeGraphUpdater:
     def __init__(self, rdf_file, neo4j_driver, client):
         """
@@ -171,24 +201,18 @@ class KnowledgeGraphUpdater:
         """
         # Initialize dependencies
         self.client = client
-        self.rdf_processor = RDFProcessor()
+        self.rdf_processor = RDFProcessor(neo4j_driver)
         self.ecl = ExternalContinualLearner(client)
-        self.kg = Neo4jKnowledgeGraph(neo4j_driver)
+        self.rdf_file = rdf_file
 
-        # Load RDF data
-        self.load_rdf_data(rdf_file)
-
-    def load_rdf_data(self, rdf_file):
+    def load_rdf_data(self):
         """
         Load RDF data from the provided file into the RDF graph, Neo4j graph, and ECL.
 
         :param rdf_file: Path to the RDF file.
         """
-        # Parse the RDF file
-        self.rdf_processor.graph.parse(rdf_file, format="turtle")
-
-        # Populate Neo4j from RDF
-        self.kg.add_rdf_to_graph(self.rdf_processor.graph)
+        # Load RDF data
+        self.rdf_processor.load_rdf_data(self.rdf_file)
 
         # Initialize ECL from RDF graph
         self.initialize_ecl_from_rdf()
@@ -237,7 +261,7 @@ class KnowledgeGraphUpdater:
             self.ecl.update_class(class_name, np.array(relationship_embeddings))
 
         # Push RDF data to Neo4j
-        self.kg.add_rdf_to_graph(self.rdf_processor.graph)
+        self.rdf_processor.add_rdf_to_graph(self.rdf_processor.graph)
 
     def extract_data_from_text_with_resolutions(self, text):
         """
@@ -246,6 +270,7 @@ class KnowledgeGraphUpdater:
         :param text: Input text to process.
         :return: Extracted class name, relationships, and resolutions.
         """
+        # TODO: Fix me. This prompt needs be generalized more
         prompt = f"""
         Extract entities from the following text. Identify:
         1. A main class (e.g., 'Claim').

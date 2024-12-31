@@ -33,6 +33,9 @@ with open("app/base_data.ttl", "rb") as file:
 # Initialize the KnowledgeGraphUpdater
 kg_updater = KnowledgeGraphUpdater(rdf_file_bytes, neo4j_driver, client)
 
+# load the RDF data
+kg_updater.load_rdf_data()
+
 # Initialize the KnowledgeGraphQueryHandler
 query_handler = KnowledgeGraphQueryHandler(kg_updater.ecl, neo4j_driver, client)
 
