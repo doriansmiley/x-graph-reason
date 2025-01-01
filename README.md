@@ -1,10 +1,26 @@
 # IMPORTANT
 This project is an experiment. It is not functional. TODOs:
-1. Get the RDF data properly imported. The current ingest algorithm is shit.
-Refactor to use [`rdflib_neo4j`](https://neo4j.com/labs/rdflib-neo4j/1.0/gettingstarted/)
-2. Verify the `ExternalContinualLearner` is functioning as designed and yielding relevant results. Built a better test
-3. Once the KG is properly populated in Neo4J, verify `execute_neo4j_query` is working as designed
-4. Test the viability of this approach at scale and its ability to absorb new facts 
+1. ~Get the RDF data properly imported. The current ingest algorithm is shit.
+Refactor to use [`rdflib_neo4j`](https://neo4j.com/labs/rdflib-neo4j/1.0/gettingstarted/)~ DONE
+1. Fix the `QueryEngine.execute_neo4j_query` function so it returns the data for the denial instances such as the denial code and status. Currently it only returns the resolution. Test queries using the [Neo4J console](https://console-preview.neo4j.io/tools/query). Sample query below.
+```
+MATCH (instance)-[r]->(class)
+WHERE class.uri IN ['http://example.org/insurance#Claim', 'http://example.org/insurance#Denial', 'http://example.org/insurance#Resolution']
+AND (type(r) = 'type' OR type(r) = 'resolves')
+AND instance.resolutionDescription IS NOT NULL
+RETURN
+class.uri AS class,
+class.label AS className,
+instance.appealStatus AS appealStatus,
+instance.denialCode AS denialCode,
+instance.denialReason AS denialReason,
+instance.claimStatus AS claimStatus,
+instance.uri AS target,
+instance.label AS instanceName,
+instance.resolutionDescription AS resolution
+```
+1. Verify the `ExternalContinualLearner` is functioning as designed and yielding relevant results. Built a better test
+1. Test the viability of this approach at scale and its ability to absorb new facts.
 
 # x-graph-reason
 Demo app using InCA with Neo4J KG and RDF for exploring domian specific solution spaces
