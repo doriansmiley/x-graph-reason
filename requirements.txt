@@ -8,3 +8,5 @@ neo4j
 python-dotenv
 pytest
 pytest-mock
+networkx
+matplotlib

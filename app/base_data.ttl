@@ -3,7 +3,10 @@
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 @prefix ex: <http://example.org/insurance#> .
 
+############################
 # Classes
+############################
+
 ex:Claim rdf:type rdfs:Class ;
     rdfs:label "Insurance Claim" .
 
@@ -13,7 +16,23 @@ ex:Denial rdf:type rdfs:Class ;
 ex:Resolution rdf:type rdfs:Class ;
     rdfs:label "Resolution" .
 
+ex:Investigation rdf:type rdfs:Class ;
+    rdfs:label "Investigation" .
+
+ex:Appeal rdf:type rdfs:Class ;
+    rdfs:label "Appeal" .
+
+ex:LogisticCompany rdf:type rdfs:Class ;
+    rdfs:label "Logistic Company" .
+
+ex:RemediationAction rdf:type rdfs:Class ;
+    rdfs:label "Remediation Action" .
+
+############################
 # Properties
+############################
+
+# --- Claim properties ---
 ex:claimID rdf:type rdf:Property ;
     rdfs:label "Claim ID" ;
     rdfs:domain ex:Claim ;
@@ -39,6 +58,17 @@ ex:claimStatus rdf:type rdf:Property ;
     rdfs:domain ex:Claim ;
     rdfs:range xsd:string .
 
+ex:claimSubmissionDate rdf:type rdf:Property ;
+    rdfs:label "Claim Submission Date" ;
+    rdfs:domain ex:Claim ;
+    rdfs:range xsd:date .
+
+ex:handledBy rdf:type rdf:Property ;
+    rdfs:label "Handled By" ;
+    rdfs:domain ex:Claim ;
+    rdfs:range ex:LogisticCompany .
+
+# --- Denial properties ---
 ex:denialReason rdf:type rdf:Property ;
     rdfs:label "Reason for Denial" ;
     rdfs:domain ex:Denial ;
@@ -69,21 +99,7 @@ ex:appealStatus rdf:type rdf:Property ;
     rdfs:domain ex:Denial ;
     rdfs:range xsd:string .
 
-ex:adjustment rdf:type rdf:Property ;
-    rdfs:label "Adjustment Reason" ;
-    rdfs:domain ex:Claim ;
-    rdfs:range xsd:string .
-
-ex:preauthorization rdf:type rdf:Property ;
-    rdfs:label "Preauthorization Requirement" ;
-    rdfs:domain ex:Claim ;
-    rdfs:range xsd:string .
-
-ex:medicalNecessity rdf:type rdf:Property ;
-    rdfs:label "Medical Necessity" ;
-    rdfs:domain ex:Claim ;
-    rdfs:range xsd:string .
-
+# --- Resolution properties ---
 ex:resolutionDescription rdf:type rdf:Property ;
     rdfs:label "Resolution Description" ;
     rdfs:domain ex:Resolution ;
@@ -94,7 +110,54 @@ ex:resolves rdf:type rdf:Property ;
     rdfs:domain ex:Denial ;
     rdfs:range ex:Resolution .
 
+# --- Investigation properties ---
+ex:hasInvestigation rdf:type rdf:Property ;
+    rdfs:label "Has Investigation" ;
+    rdfs:domain ex:Claim ;
+    rdfs:range ex:Investigation .
+
+ex:investigationDate rdf:type rdf:Property ;
+    rdfs:label "Investigation Date" ;
+    rdfs:domain ex:Investigation ;
+    rdfs:range xsd:date .
+
+ex:investigationStatus rdf:type rdf:Property ;
+    rdfs:label "Investigation Status" ;
+    rdfs:domain ex:Investigation ;
+    rdfs:range xsd:string .
+
+# --- Appeal properties ---
+ex:hasAppeal rdf:type rdf:Property ;
+    rdfs:label "Has Appeal" ;
+    rdfs:domain ex:Denial ;
+    rdfs:range ex:Appeal .
+
+ex:appealDate rdf:type rdf:Property ;
+    rdfs:label "Appeal Date" ;
+    rdfs:domain ex:Appeal ;
+    rdfs:range xsd:date .
+
+ex:appealOutcome rdf:type rdf:Property ;
+    rdfs:label "Appeal Outcome" ;
+    rdfs:domain ex:Appeal ;
+    rdfs:range xsd:string .
+
+# --- Remediation properties ---
+ex:actionDescription rdf:type rdf:Property ;
+    rdfs:label "Action Description" ;
+    rdfs:domain ex:RemediationAction ;
+    rdfs:range xsd:string .
+
+ex:remediationFor rdf:type rdf:Property ;
+    rdfs:label "Remediation For" ;
+    rdfs:domain ex:RemediationAction ;
+    rdfs:range ex:Denial .
+
+############################
 # Instances
+############################
+
+# --- Resolution instances ---
 ex:Resolution1 rdf:type ex:Resolution ;
     rdfs:label "Verify allowable amounts with the payor" ;
     ex:resolutionDescription "Verify allowable amounts with the payor" ;
@@ -105,6 +168,7 @@ ex:Resolution2 rdf:type ex:Resolution ;
     ex:resolutionDescription "Submit preauthorization forms retroactively" ;
     ex:type ex:Resolution .
 
+# --- Claim instances ---
 ex:Claim123 rdf:type ex:Claim ;
     ex:claimID "123" ;
     ex:patientID "P456" ;
@@ -112,6 +176,8 @@ ex:Claim123 rdf:type ex:Claim ;
     ex:claimAmount 1500.00 ;
     ex:claimStatus "Denied" ;
     ex:medicalNecessity "Medical necessity not demonstrated" ;
+    ex:claimSubmissionDate "2023-11-15"^^xsd:date ;
+    ex:handledBy ex:OwensMinor ;
     ex:type ex:Claim .
 
 ex:Claim456 rdf:type ex:Claim ;
@@ -121,12 +187,15 @@ ex:Claim456 rdf:type ex:Claim ;
     ex:claimAmount 1000.00 ;
     ex:claimStatus "Denied" ;
     ex:preauthorization "Preauthorization required but not obtained" ;
+    ex:claimSubmissionDate "2023-11-18"^^xsd:date ;
+    ex:handledBy ex:OwensMinor ;
     ex:type ex:Claim .
 
+# --- Denial instances ---
 ex:Denial123 rdf:type ex:Denial ;
     ex:denialCode "45" ;
     ex:denialReason "Charge exceeds allowable amount" ;
-    ex:denialDate "2023-12-01" ;
+    ex:denialDate "2023-12-01"^^xsd:date ;
     ex:denialType "Adjustment" ;
     ex:denialAmount 200.00 ;
     ex:appealStatus "Pending" ;
@@ -136,9 +205,39 @@ ex:Denial123 rdf:type ex:Denial ;
 ex:Denial456 rdf:type ex:Denial ;
     ex:denialCode "100" ;
     ex:denialReason "Preauthorization required but not obtained" ;
-    ex:denialDate "2023-12-05" ;
+    ex:denialDate "2023-12-05"^^xsd:date ;
     ex:denialType "Authorization" ;
     ex:denialAmount 500.00 ;
     ex:appealStatus "Submitted" ;
     ex:resolves ex:Resolution2 ;
     ex:type ex:Denial .
+
+# --- Investigation instance ---
+ex:Investigation1 rdf:type ex:Investigation ;
+    rdfs:label "Investigation for Claim 123" ;
+    ex:investigationDate "2023-11-20"^^xsd:date ;
+    ex:investigationStatus "In Progress" ;
+    ex:type ex:Investigation .
+
+# --- Appeal instance ---
+ex:Appeal1 rdf:type ex:Appeal ;
+    rdfs:label "Appeal for Denial 456" ;
+    ex:appealDate "2023-12-03"^^xsd:date ;
+    ex:appealOutcome "Under Review" ;
+    ex:type ex:Appeal .
+
+# --- Remediation Action instance ---
+ex:Remediation1 rdf:type ex:RemediationAction ;
+    rdfs:label "Remediation Action for Denial 123" ;
+    ex:actionDescription "Submit revised documentation" ;
+    ex:remediationFor ex:Denial123 ;
+    ex:type ex:RemediationAction .
+
+# --- Logistic Company instance ---
+ex:OwensMinor rdf:type ex:LogisticCompany ;
+    rdfs:label "Owens & Minor" ;
+    ex:type ex:LogisticCompany .
+
+# --- Linking investigations and appeals ---
+ex:Claim123 ex:hasInvestigation ex:Investigation1 .
+ex:Denial456 ex:hasAppeal ex:Appeal1 .
